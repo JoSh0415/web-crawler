@@ -468,24 +468,30 @@ A typical use of the tool looks like this:
 
 ## Notes and Limitations
 
-- The tool is designed specifically for the coursework target website: `https://quotes.toscrape.com/`
+- The tool is designed specifically for the coursework target site: `https://quotes.toscrape.com/`
+- The crawler indexes **pages**, not unique quotes as standalone records
 - Search is case-insensitive
-- Query processing currently uses simple AND-style matching
-- The current implementation does not include ranking such as TF-IDF
-- The index is saved as a single JSON file for simplicity
-- The crawler indexes all unique internal pages on `quotes.toscrape.com`, not just the main paginated quote pages
-- Obvious first-page aliases such as `/page/1/` and `/tag/<slug>/page/1/` are normalised so equivalent first pages are not indexed twice
+- Normal multi-word queries use AND semantics
+- Exact phrase queries are supported only when the query is wrapped in double quotes
+- Query suggestions are heuristic and intended for likely misspellings, not semantic rewriting
+- The index is stored as a single JSON file for simplicity rather than a compressed or database-backed format
+- Real end-to-end build time is dominated by network latency and the required 6-second politeness delay
+- URL normalisation currently targets obvious first-page aliases such as `/page/1/` and `/tag/<slug>/page/1/`
 
 ## External Libraries and Resources
 
-This project uses:
-- Requests documentation: for HTTP requests and session handling
-- Beautiful Soup 4 documentation: for HTML parsing
-- urllib3 Retry / requests HTTPAdapter behaviour: for transient request retry handling
-- Pytest documentation: for automated testing
+This project used the following external resources and documentation:
 
-The target practice website was:
-- `https://quotes.toscrape.com/`
+- Microsoft Secure Copilot - Idea and code understanding/generation
+- Python Requests documentation - HTTP requests and session handling
+- Beautiful Soup 4 documentation - HTML parsing and extraction
+- urllib3 Retry / requests HTTPAdapter documentation - transient retry behaviour
+- Pytest documentation - automated testing
+- pytest-cov documentation - coverage reporting
+- GitHub Actions documentation - CI workflow setup
+- `https://quotes.toscrape.com/` - coursework practice target website
+
+These were used as technical references for implementation details, not as substitutes for the project design itself.
 
 ## Submission Notes
 
