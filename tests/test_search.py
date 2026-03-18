@@ -1,4 +1,7 @@
-from src.indexer import InvertedIndex
+from pathlib import Path
+
+from src import main
+from src.indexer import InvertedIndex, save_index
 from src.search import (
     normalise_term,
     normalise_query,
@@ -348,3 +351,144 @@ def test_format_search_results_does_not_suggest_when_terms_are_known_but_do_not_
     result = format_search_results(index, "good indifference")
 
     assert result == "No documents found for query: good indifference"
+
+
+"""Tests for main.py"""
+
+def test_process_command_returns_true_for_empty_input(capsys):
+    keep_running = main.process_command("   ")
+
+    assert keep_running is True
+    captured = capsys.readouterr()
+    assert captured.out == ""
+
+
+def test_process_command_help_prints_help_and_continues(capsys):
+    keep_running = main.process_command("help")
+
+    assert keep_running is True
+    captured = capsys.readouterr()
+    assert "Available commands:" in captured.out
+    assert "build" in captured.out
+    assert "find <query>" in captured.out
+
+
+def test_process_command_exit_stops_shell(capsys):
+    keep_running = main.process_command("exit")
+
+    assert keep_running is False
+    captured = capsys.readouterr()
+    assert "Goodbye!" in captured.out
+
+
+def test_process_command_quit_stops_shell(capsys):
+    keep_running = main.process_command("quit")
+
+    assert keep_running is False
+    captured = capsys.readouterr()
+    assert "Goodbye!" in captured.out
+
+
+def test_process_command_unknown_command_prints_error(capsys):
+    keep_running = main.process_command("explode")
+
+    assert keep_running is True
+    captured = capsys.readouterr()
+    assert "Unknown command: explode" in captured.out
+    assert "Available commands:" in captured.out
+
+
+def test_process_command_build_with_args_shows_usage(capsys):
+    keep_running = main.process_command("build now")
+
+    assert keep_running is True
+    captured = capsys.readouterr()
+    assert "Usage: build" in captured.out
+
+
+def test_process_command_load_with_args_shows_usage(capsys):
+    keep_running = main.process_command("load now")
+
+    assert keep_running is True
+    captured = capsys.readouterr()
+    assert "Usage: load" in captured.out
+
+
+def test_process_command_print_without_one_word_shows_usage(capsys):
+    keep_running = main.process_command("print")
+
+    assert keep_running is True
+    captured = capsys.readouterr()
+    assert "Usage: print <word>" in captured.out
+
+
+def test_process_command_print_with_too_many_args_shows_usage(capsys):
+    keep_running = main.process_command("print good friends")
+
+    assert keep_running is True
+    captured = capsys.readouterr()
+    assert "Usage: print <word>" in captured.out
+
+
+def test_process_command_find_without_args_shows_usage(capsys):
+    keep_running = main.process_command("find")
+
+    assert keep_running is True
+    captured = capsys.readouterr()
+    assert "Usage: find <query>" in captured.out
+
+
+def test_process_command_routes_build_to_handler(monkeypatch):
+    called = {"build": False}
+
+    def fake_handle_build():
+        called["build"] = True
+
+    monkeypatch.setattr(main, "handle_build", fake_handle_build)
+
+    keep_running = main.process_command("build")
+
+    assert keep_running is True
+    assert called["build"] is True
+
+
+def test_process_command_routes_load_to_handler(monkeypatch):
+    called = {"load": False}
+
+    def fake_handle_load():
+        called["load"] = True
+
+    monkeypatch.setattr(main, "handle_load", fake_handle_load)
+
+    keep_running = main.process_command("load")
+
+    assert keep_running is True
+    assert called["load"] is True
+
+
+def test_process_command_routes_print_to_handler(monkeypatch):
+    called = {"word": None}
+
+    def fake_handle_print(word: str):
+        called["word"] = word
+
+    monkeypatch.setattr(main, "handle_print", fake_handle_print)
+
+    keep_running = main.process_command("print good")
+
+    assert keep_running is True
+    assert called["word"] == "good"
+
+
+def test_process_command_routes_find_to_handler(monkeypatch):
+    called = {"query": None}
+
+    def fake_handle_find(query: str):
+        called["query"] = query
+
+    monkeypatch.setattr(main, "handle_find", fake_handle_find)
+
+    keep_running = main.process_command("find good friends")
+
+    assert keep_running is True
+    assert called["query"] == "good friends"
