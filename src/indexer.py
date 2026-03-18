@@ -1,11 +1,7 @@
-"""Indexer data structures for the coursework search tool.
-
-This file defines the inverted index design and helper methods.
-It does not crawl the website or save/load files.
-"""
-
 from dataclasses import dataclass, field
-from typing import Dict, List
+from pathlib import Path
+from typing import Dict, List, Union
+import json
 
 
 @dataclass
@@ -81,3 +77,67 @@ class InvertedIndex:
             matching_docs = matching_docs.intersection(term_docs)
 
         return sorted(matching_docs)
+
+    def to_dict(self) -> dict:
+        """Convert the whole index into plain dictionaries for JSON saving."""
+        return {
+            "documents": {
+                doc_id: {
+                    "doc_id": doc.doc_id,
+                    "url": doc.url,
+                    "title": doc.title,
+                }
+                for doc_id, doc in self.documents.items()
+            },
+            "index": {
+                term: {
+                    doc_id: {
+                        "frequency": posting.frequency,
+                        "positions": posting.positions,
+                    }
+                    for doc_id, posting in postings.items()
+                }
+                for term, postings in self.index.items()
+            },
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "InvertedIndex":
+        """Rebuild an InvertedIndex from saved dictionary data."""
+        new_index = cls()
+
+        for doc_id, doc_data in data.get("documents", {}).items():
+            new_index.documents[doc_id] = Document(
+                doc_id=doc_data["doc_id"],
+                url=doc_data["url"],
+                title=doc_data.get("title", ""),
+            )
+
+        for term, postings in data.get("index", {}).items():
+            new_index.index[term] = {}
+            for doc_id, posting_data in postings.items():
+                new_index.index[term][doc_id] = Posting(
+                    frequency=posting_data["frequency"],
+                    positions=posting_data["positions"],
+                )
+
+        return new_index
+
+
+def save_index(index: InvertedIndex, filename: Union[str, Path]) -> None:
+    """Save the index to a JSON file."""
+    path = Path(filename)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    with path.open("w", encoding="utf-8") as file:
+        json.dump(index.to_dict(), file, indent=2, ensure_ascii=False)
+
+
+def load_index(filename: Union[str, Path]) -> InvertedIndex:
+    """Load an index from a JSON file."""
+    path = Path(filename)
+
+    with path.open("r", encoding="utf-8") as file:
+        data = json.load(file)
+
+    return InvertedIndex.from_dict(data)
