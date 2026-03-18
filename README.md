@@ -8,6 +8,26 @@ The tool was designed to meet the coursework brief requirements for:
 - file-based index storage and retrieval
 - query processing through a command-line shell
 
+## Quick Start
+
+```bash
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+python -m src.main
+```
+
+Then, from the interactive shell:
+
+```bash
+build
+load
+print nonsense
+find indifference
+find "good friends"
+find indiffernce
+```
+
 ## Project Purpose
 
 The purpose of this project is to demonstrate how a simple search engine works in practice.
@@ -26,29 +46,27 @@ The target website is:
 
 ## Features
 
-- Crawls all unique internal pages of the target website
+- Crawls all unique internal pages of `https://quotes.toscrape.com/`
 - Respects the required **6-second politeness window** between successive requests
+- Normalises obvious first-page aliases so equivalent first pages are not indexed twice
 - Builds an **inverted index** storing:
   - document IDs
   - page URLs
   - page titles
   - term frequency per page
   - term positions per page
-- Saves the compiled index to a JSON file
-- Loads the saved index from disk
-- Supports the required shell commands:
-  - `build`
-  - `load`
-  - `print <word>`
-  - `find <query>`
-- Case-insensitive searching
-- Single-word and multi-word query support
-- Unit tests for crawler, indexer, and search functionality
+- Saves the compiled index to a JSON file and loads it later from disk
+- Uses **TF-IDF ranked retrieval** for `find <query>` results
+- Supports **exact phrase queries** using stored positional information
+- Supports **query suggestions** for misspelled search terms
+- Handles invalid or missing index files with clearer error messages
+- Includes automated tests for crawler, indexer, search logic, and CLI command flow
+- Includes coverage reporting and a GitHub Actions CI workflow
 
 ## Repository Structure
 
 ```text
-repository-name/
+web-crawler/
 ├── src/
 │   ├── crawler.py
 │   ├── indexer.py
@@ -58,8 +76,15 @@ repository-name/
 │   ├── test_crawler.py
 │   ├── test_indexer.py
 │   └── test_search.py
+├── scripts/
+│   └── benchmark.py
+├── .github/
+│   └── workflows/
+│       └── tests.yml
 ├── data/
 │   └── index.json
+├── .coveragerc
+├── pytest.ini
 ├── requirements.txt
 └── README.md
 ```
