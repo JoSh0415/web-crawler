@@ -5,9 +5,10 @@ from src.crawler import (
     find_next_page_url,
     scrape_single_page,
     tokenize_text,
-    build_page_tokens,
     add_page_to_index,
     crawl_all_pages,
+    normalise_url,
+    extract_internal_links,
 )
 from src.indexer import InvertedIndex
 
@@ -57,11 +58,7 @@ CRAWL_PAGE_1 = """
         <div class="quote">
             <span class="text">“Good friends matter.”</span>
         </div>
-        <ul class="pager">
-            <li class="next">
-                <a href="/page/2/">Next →</a>
-            </li>
-        </ul>
+        <a href="/page/2/">Next page</a>
     </body>
 </html>
 """
@@ -122,10 +119,29 @@ def test_find_next_page_url_returns_none_when_missing():
     assert next_url is None
 
 
+def test_normalise_url_collapses_homepage_page_one_alias():
+    assert normalise_url("https://quotes.toscrape.com/page/1/") == "https://quotes.toscrape.com/"
+
+
+def test_normalise_url_collapses_tag_page_one_alias():
+    assert (
+        normalise_url("https://quotes.toscrape.com/tag/love/page/1/")
+        == "https://quotes.toscrape.com/tag/love/"
+    )
+
+
+def test_extract_internal_links_returns_unique_internal_links():
+    soup = parse_html(SAMPLE_HTML)
+
+    links = extract_internal_links(soup, "https://quotes.toscrape.com/")
+
+    assert links == ["https://quotes.toscrape.com/page/2/"]
+
+
 def test_scrape_single_page_returns_none_when_fetch_fails(monkeypatch):
     from src import crawler
 
-    def fake_fetch_page(url: str):
+    def fake_fetch_page(url: str, session=None):
         return None
 
     monkeypatch.setattr(crawler, "fetch_page", fake_fetch_page)
@@ -138,7 +154,7 @@ def test_scrape_single_page_returns_none_when_fetch_fails(monkeypatch):
 def test_scrape_single_page_returns_expected_data(monkeypatch):
     from src import crawler
 
-    def fake_fetch_page(url: str):
+    def fake_fetch_page(url: str, session=None):
         return SAMPLE_HTML
 
     monkeypatch.setattr(crawler, "fetch_page", fake_fetch_page)
@@ -150,20 +166,15 @@ def test_scrape_single_page_returns_expected_data(monkeypatch):
     assert result["title"] == "Quotes to Scrape"
     assert len(result["quotes"]) == 2
     assert result["next_page_url"] == "https://quotes.toscrape.com/page/2/"
+    assert "text" in result
+    assert "links" in result
+    assert result["links"] == ["https://quotes.toscrape.com/page/2/"]
 
 
 def test_tokenize_text_lowercases_and_removes_punctuation():
     tokens = tokenize_text("Hello, World! It's good.")
 
     assert tokens == ["hello", "world", "it's", "good"]
-
-
-def test_build_page_tokens_combines_multiple_quotes():
-    quote_texts = ["Good friends matter.", "Indifference is dangerous."]
-
-    tokens = build_page_tokens(quote_texts)
-
-    assert tokens == ["good", "friends", "matter", "indifference", "is", "dangerous"]
 
 
 def test_add_page_to_index_adds_document_and_terms():
@@ -180,13 +191,13 @@ def test_add_page_to_index_adds_document_and_terms():
     assert "page_1" in index.documents
     assert index.documents["page_1"].title == "Page 1"
     assert index.get_postings("good")["page_1"].frequency == 2
-    assert index.get_postings("friends")["page_1"].positions == [1]
+    assert index.get_postings("friends")["page_1"].positions == [3]
 
 
 def test_crawl_all_pages_builds_index_across_multiple_pages(monkeypatch):
     from src import crawler
 
-    def fake_fetch_page(url: str):
+    def fake_fetch_page(url: str, session=None):
         if url == "https://quotes.toscrape.com/":
             return CRAWL_PAGE_1
         if url == "https://quotes.toscrape.com/page/2/":
@@ -206,14 +217,11 @@ def test_crawl_all_pages_builds_index_across_multiple_pages(monkeypatch):
     assert index.find_documents(["indifference"]) == ["page_2"]
 
 
-def test_crawl_all_pages_returns_partial_index_when_fetch_fails(monkeypatch):
+def test_crawl_all_pages_retries_failed_page_then_gives_up(monkeypatch):
     from src import crawler
 
-    calls = {"count": 0}
-
-    def fake_fetch_page(url: str):
-        calls["count"] += 1
-        if calls["count"] == 1:
+    def fake_fetch_page(url: str, session=None):
+        if url == "https://quotes.toscrape.com/":
             return CRAWL_PAGE_1
         return None
 

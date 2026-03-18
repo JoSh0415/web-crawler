@@ -13,8 +13,8 @@ The tool was designed to meet the coursework brief requirements for:
 The purpose of this project is to demonstrate how a simple search engine works in practice.
 
 The tool:
-1. crawls all pages of the target website
-2. extracts the visible quote text from each page
+1. crawls all unique internal pages on the target website
+2. extracts the visible text from each page
 3. tokenises and indexes the words found on each page
 4. stores word statistics such as frequency and positions
 5. saves the completed index to disk
@@ -26,7 +26,7 @@ The target website is:
 
 ## Features
 
-- Crawls all pages of the target website
+- Crawls all unique internal pages of the target website
 - Respects the required **6-second politeness window** between successive requests
 - Builds an **inverted index** storing:
   - document IDs
@@ -72,10 +72,12 @@ The project is divided into four main modules.
 This module is responsible for:
 - fetching pages from the target website
 - parsing HTML using Beautiful Soup
-- extracting visible quote text
+- extracting visible page text and quote text
 - extracting the page title
-- locating the next-page link
-- crawling through all pages while respecting the politeness delay
+- extracting internal links from each page
+- normalising URLs to avoid obvious duplicate first-page aliases
+- crawling all unique internal pages while respecting the politeness delay
+- retrying transient request failures
 - tokenising page text before it is sent to the indexer
 
 ### `src/indexer.py`
@@ -180,6 +182,7 @@ Crawls the target website, builds the inverted index, and saves it to `data/inde
 Notes:
 - this command takes time because the crawler waits at least 6 seconds between successive requests
 - after build, the index is also kept in memory for immediate searching
+- the crawler indexes all unique internal pages on the site, including main quote pages, tag pages, and author pages
 
 ### `load`
 Loads the saved index from `data/index.json`.
@@ -251,9 +254,11 @@ Covers:
 - page title extraction
 - next-page URL detection
 - tokenisation
+- internal link extraction
+- URL normalisation
 - adding page data into the index
-- crawling multiple pages using mocked responses
-- partial crawl failure handling
+- crawling multiple linked pages using mocked responses
+- retry / failure handling behaviour
 
 ### `test_indexer.py`
 Covers:
@@ -293,13 +298,16 @@ A typical use of the tool looks like this:
 - Query processing currently uses simple AND-style matching
 - The current implementation does not include ranking such as TF-IDF
 - The index is saved as a single JSON file for simplicity
+- The crawler indexes all unique internal pages on `quotes.toscrape.com`, not just the main paginated quote pages
+- Obvious first-page aliases such as `/page/1/` and `/tag/<slug>/page/1/` are normalised so equivalent first pages are not indexed twice
 
 ## External Libraries and Resources
 
 This project uses:
-- Python Requests library
-- Beautiful Soup 4
-- Pytest
+- Requests documentation: for HTTP requests and session handling
+- Beautiful Soup 4 documentation: for HTML parsing
+- urllib3 Retry / requests HTTPAdapter behaviour: for transient request retry handling
+- Pytest documentation: for automated testing
 
 The target practice website was:
 - `https://quotes.toscrape.com/`
