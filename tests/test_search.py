@@ -615,3 +615,62 @@ def test_run_shell_handles_keyboard_interrupt_then_exit(monkeypatch, capsys):
     captured = capsys.readouterr()
     assert "Interrupted. Type 'exit' to quit." in captured.out
     assert "Goodbye!" in captured.out
+
+
+def test_handle_build_prints_reason_when_crawl_fails(monkeypatch, capsys):
+    def fake_crawl_all_pages():
+        raise RuntimeError("network failure")
+
+    monkeypatch.setattr(main, "crawl_all_pages", fake_crawl_all_pages)
+    monkeypatch.setattr(main, "LOADED_INDEX", None)
+
+    main.handle_build()
+
+    captured = capsys.readouterr()
+    assert "Build failed." in captured.out
+    assert "Reason: network failure" in captured.out
+    assert main.LOADED_INDEX is None
+
+
+def test_handle_build_prints_reason_when_save_fails(monkeypatch, capsys):
+    index = InvertedIndex()
+    index.index_tokens("page_1", "https://example.com/page1", ["good"], "Page 1")
+
+    def fake_crawl_all_pages():
+        return index
+
+    def fake_save_index(_index, _path):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(main, "crawl_all_pages", fake_crawl_all_pages)
+    monkeypatch.setattr(main, "save_index", fake_save_index)
+    monkeypatch.setattr(main, "LOADED_INDEX", None)
+
+    main.handle_build()
+
+    captured = capsys.readouterr()
+    assert "Build failed." in captured.out
+    assert "Reason: disk full" in captured.out
+    assert main.LOADED_INDEX is None
+
+
+def test_handle_load_clears_loaded_index_on_failure(tmp_path, monkeypatch, capsys):
+    index_file = tmp_path / "index.json"
+    index_file.write_text("{}", encoding="utf-8")
+
+    existing_index = InvertedIndex()
+    existing_index.index_tokens("page_1", "https://example.com/page1", ["good"], "Page 1")
+
+    def fake_load_index(path):
+        raise ValueError("broken index")
+
+    monkeypatch.setattr(main, "INDEX_FILE", index_file)
+    monkeypatch.setattr(main, "load_index", fake_load_index)
+    monkeypatch.setattr(main, "LOADED_INDEX", existing_index)
+
+    main.handle_load()
+
+    captured = capsys.readouterr()
+    assert "Could not load the index file." in captured.out
+    assert "Reason: broken index" in captured.out
+    assert main.LOADED_INDEX is None
