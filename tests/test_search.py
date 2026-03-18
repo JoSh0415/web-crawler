@@ -7,6 +7,8 @@ from src.search import (
     get_postings_for_term,
     format_index_entry,
     document_contains_exact_phrase,
+    get_term_suggestion,
+    get_query_suggestion,
     find_matching_doc_ids,
     find_matching_documents,
     format_search_results,
@@ -153,6 +155,7 @@ def test_format_search_results_handles_empty_query():
 
     assert result == "Please enter one or more search words."
 
+
 def build_ranked_index() -> InvertedIndex:
     index = InvertedIndex()
     index.index_tokens(
@@ -202,6 +205,7 @@ def test_format_search_results_includes_rank_scores():
     assert "Documents matching query: good friends" in result
     assert "[page_1] score=" in result
     assert "[page_2] score=" in result
+
 
 def build_phrase_index() -> InvertedIndex:
     index = InvertedIndex()
@@ -279,3 +283,68 @@ def test_format_search_results_handles_missing_exact_phrase():
     result = format_search_results(index, '"friends good"')
 
     assert result == "No documents found for exact phrase: friends good"
+
+
+def test_get_term_suggestion_returns_close_match_for_unknown_word():
+    index = build_sample_index()
+
+    suggestion = get_term_suggestion(index, "indiffernce")
+
+    assert suggestion == "indifference"
+
+
+def test_get_term_suggestion_returns_none_for_known_word():
+    index = build_sample_index()
+
+    suggestion = get_term_suggestion(index, "good")
+
+    assert suggestion is None
+
+
+def test_get_query_suggestion_corrects_only_unknown_terms():
+    index = build_sample_index()
+
+    suggestion = get_query_suggestion(index, ["good", "freinds"])
+
+    assert suggestion == ["good", "friends"]
+
+
+def test_format_search_results_suggests_single_word_correction():
+    index = build_sample_index()
+
+    result = format_search_results(index, "indiffernce")
+
+    assert result == (
+        "No documents found for query: indiffernce\n"
+        "Did you mean: indifference?"
+    )
+
+
+def test_format_search_results_suggests_multi_word_correction():
+    index = build_sample_index()
+
+    result = format_search_results(index, "good freinds")
+
+    assert result == (
+        "No documents found for query: good freinds\n"
+        "Did you mean: good friends?"
+    )
+
+
+def test_format_search_results_suggests_exact_phrase_correction():
+    index = build_sample_index()
+
+    result = format_search_results(index, '"indiffernce is"')
+
+    assert result == (
+        "No documents found for exact phrase: indiffernce is\n"
+        "Did you mean exact phrase: indifference is?"
+    )
+
+
+def test_format_search_results_does_not_suggest_when_terms_are_known_but_do_not_match_together():
+    index = build_sample_index()
+
+    result = format_search_results(index, "good indifference")
+
+    assert result == "No documents found for query: good indifference"

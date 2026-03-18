@@ -1,3 +1,4 @@
+import difflib
 import math
 from typing import List
 
@@ -196,6 +197,65 @@ def rank_doc_ids(index: InvertedIndex, doc_ids: List[str], query_terms: List[str
     )
 
 
+def get_vocabulary(index: InvertedIndex) -> List[str]:
+    """Return the full sorted vocabulary of indexed terms."""
+    return sorted(index.index.keys())
+
+
+def get_term_suggestion(index: InvertedIndex, term: str) -> str | None:
+    """
+    Return the closest indexed term for an unknown word, or None.
+
+    Suggestions are only attempted for terms that are not already present.
+    """
+    normalised = normalise_term(term)
+
+    if not normalised or normalised in index.index:
+        return None
+
+    matches = difflib.get_close_matches(
+        normalised,
+        get_vocabulary(index),
+        n=1,
+        cutoff=0.75,
+    )
+
+    if not matches:
+        return None
+
+    return matches[0]
+
+
+def get_query_suggestion(index: InvertedIndex, query_terms: List[str]) -> List[str] | None:
+    """
+    Return a suggested corrected query if one or more unknown terms
+    can be replaced with close matches.
+
+    Returns None if:
+    - all terms are already known, or
+    - no useful corrections can be found.
+    """
+    if not query_terms:
+        return None
+
+    suggested_terms: List[str] = []
+    changed = False
+
+    for term in query_terms:
+        suggestion = get_term_suggestion(index, term)
+
+        if suggestion is not None:
+            suggested_terms.append(suggestion)
+            changed = True
+        else:
+            suggested_terms.append(term)
+
+    if not changed:
+        return None
+
+    return suggested_terms
+
+
 def find_matching_doc_ids(index: InvertedIndex, query: str) -> List[str]:
     """
     Return matching document IDs for a query.
@@ -235,9 +295,18 @@ def format_search_results(index: InvertedIndex, query: str) -> str:
     ranked_doc_ids = find_matching_doc_ids(index, query)
 
     if not ranked_doc_ids:
+        suggestion_terms = get_query_suggestion(index, terms)
+
         if is_exact_phrase_query(query):
-            return f'No documents found for exact phrase: {" ".join(terms)}'
-        return f"No documents found for query: {' '.join(terms)}"
+            lines = [f'No documents found for exact phrase: {" ".join(terms)}']
+            if suggestion_terms is not None:
+                lines.append(f'Did you mean exact phrase: {" ".join(suggestion_terms)}?')
+            return "\n".join(lines)
+
+        lines = [f"No documents found for query: {' '.join(terms)}"]
+        if suggestion_terms is not None:
+            lines.append(f'Did you mean: {" ".join(suggestion_terms)}?')
+        return "\n".join(lines)
 
     if is_exact_phrase_query(query):
         lines = [f'Documents matching exact phrase: {" ".join(terms)}']
