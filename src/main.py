@@ -1,10 +1,3 @@
-"""Simple command-line shell for the coursework search tool.
-
-This file only provides the shell structure and placeholder handlers.
-The crawler/indexing/search logic can be added later.
-"""
-
-
 def handle_build() -> None:
     """Placeholder for the build command."""
     print("[build] Placeholder: this will crawl the site, build the index, and save it.")
