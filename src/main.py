@@ -1,9 +1,9 @@
 from pathlib import Path
 from typing import Optional
 
-from crawler import crawl_all_pages
-from indexer import InvertedIndex, load_index, save_index
-from search import format_index_entry, format_search_results
+from src.crawler import crawl_all_pages
+from src.indexer import InvertedIndex, load_index, save_index
+from src.search import format_index_entry, format_search_results
 
 INDEX_FILE = Path("data/index.json")
 LOADED_INDEX: Optional[InvertedIndex] = None

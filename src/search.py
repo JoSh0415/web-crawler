@@ -1,6 +1,6 @@
 from typing import List
 
-from indexer import Document, InvertedIndex, Posting
+from src.indexer import Document, InvertedIndex, Posting
 
 
 def normalise_term(term: str) -> str:

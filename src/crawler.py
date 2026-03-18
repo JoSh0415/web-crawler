@@ -6,7 +6,7 @@ from urllib.parse import urljoin
 import requests
 from bs4 import BeautifulSoup
 
-from indexer import InvertedIndex
+from src.indexer import InvertedIndex
 
 BASE_URL = "https://quotes.toscrape.com/"
 DEFAULT_TIMEOUT = 10
