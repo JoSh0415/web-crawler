@@ -492,3 +492,95 @@ def test_process_command_routes_find_to_handler(monkeypatch):
 
     assert keep_running is True
     assert called["query"] == "good friends"
+
+
+def test_handle_load_prints_message_when_index_file_missing(tmp_path, monkeypatch, capsys):
+    missing_file = tmp_path / "missing.json"
+
+    monkeypatch.setattr(main, "INDEX_FILE", missing_file)
+    monkeypatch.setattr(main, "LOADED_INDEX", None)
+
+    main.handle_load()
+
+    captured = capsys.readouterr()
+    assert f"No saved index file found at {missing_file}" in captured.out
+    assert "Run 'build' first to create the index." in captured.out
+
+
+def test_handle_load_loads_index_successfully(tmp_path, monkeypatch, capsys):
+    index_file = tmp_path / "index.json"
+    index = InvertedIndex()
+    index.index_tokens("page_1", "https://example.com/page1", ["good", "friends"], "Page 1")
+    save_index(index, index_file)
+
+    monkeypatch.setattr(main, "INDEX_FILE", index_file)
+    monkeypatch.setattr(main, "LOADED_INDEX", None)
+
+    main.handle_load()
+
+    captured = capsys.readouterr()
+    assert f"Index loaded from {index_file}" in captured.out
+    assert main.LOADED_INDEX is not None
+    assert "page_1" in main.LOADED_INDEX.documents
+
+
+def test_handle_load_prints_reason_when_load_fails(tmp_path, monkeypatch, capsys):
+    index_file = tmp_path / "index.json"
+    index_file.write_text("{}", encoding="utf-8")
+
+    def fake_load_index(path: Path):
+        raise ValueError("corrupt index")
+
+    monkeypatch.setattr(main, "INDEX_FILE", index_file)
+    monkeypatch.setattr(main, "load_index", fake_load_index)
+    monkeypatch.setattr(main, "LOADED_INDEX", None)
+
+    main.handle_load()
+
+    captured = capsys.readouterr()
+    assert "Could not load the index file." in captured.out
+    assert "Reason: corrupt index" in captured.out
+
+
+def test_handle_print_requires_loaded_index(monkeypatch, capsys):
+    monkeypatch.setattr(main, "LOADED_INDEX", None)
+
+    main.handle_print("good")
+
+    captured = capsys.readouterr()
+    assert "No index is loaded." in captured.out
+    assert "Use 'build' or 'load' before running 'print'." in captured.out
+
+
+def test_handle_find_requires_loaded_index(monkeypatch, capsys):
+    monkeypatch.setattr(main, "LOADED_INDEX", None)
+
+    main.handle_find("good friends")
+
+    captured = capsys.readouterr()
+    assert "No index is loaded." in captured.out
+    assert "Use 'build' or 'load' before running 'find'." in captured.out
+
+
+def test_handle_print_uses_loaded_index(monkeypatch, capsys):
+    index = InvertedIndex()
+    index.index_tokens("page_1", "https://example.com/page1", ["good"], "Page 1")
+
+    monkeypatch.setattr(main, "LOADED_INDEX", index)
+
+    main.handle_print("good")
+
+    captured = capsys.readouterr()
+    assert "Index entry for 'good':" in captured.out
+
+
+def test_handle_find_uses_loaded_index(monkeypatch, capsys):
+    index = InvertedIndex()
+    index.index_tokens("page_1", "https://example.com/page1", ["good", "friends"], "Page 1")
+
+    monkeypatch.setattr(main, "LOADED_INDEX", index)
+
+    main.handle_find("good friends")
+
+    captured = capsys.readouterr()
+    assert "Documents matching query: good friends" in captured.out
