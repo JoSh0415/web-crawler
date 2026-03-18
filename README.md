@@ -466,6 +466,22 @@ A typical use of the tool looks like this:
 > find good friends
 ```
 
+## Development Workflow
+
+The project was developed incrementally using feature branches so that crawler, indexer, storage, search, testing, benchmarking, and documentation changes were introduced in logical stages.
+
+Examples of branch themes used during development include:
+- project scaffold
+- index data model
+- storage and load
+- crawler implementation
+- search functionality
+- CLI wiring
+- ranking and phrase-query improvements
+- testing, coverage, CI, benchmarking, and documentation polish
+
+Commits were kept descriptive so the Git history clearly shows the progression from baseline requirements to later extensions such as TF-IDF ranking, exact phrase queries, query suggestions, CI coverage checks, benchmarking, and hardening.
+
 ## Notes and Limitations
 
 - The tool is designed specifically for the coursework target site: `https://quotes.toscrape.com/`
