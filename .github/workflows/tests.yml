@@ -36,7 +36,7 @@ jobs:
 
       - name: Run tests with coverage
         run: |
-          pytest
+          python -m pytest
 
       - name: Upload HTML coverage report
         if: always()
