@@ -2,8 +2,11 @@ from src.indexer import InvertedIndex
 from src.search import (
     normalise_term,
     normalise_query,
+    is_exact_phrase_query,
+    get_query_terms,
     get_postings_for_term,
     format_index_entry,
+    document_contains_exact_phrase,
     find_matching_doc_ids,
     find_matching_documents,
     format_search_results,
@@ -199,3 +202,80 @@ def test_format_search_results_includes_rank_scores():
     assert "Documents matching query: good friends" in result
     assert "[page_1] score=" in result
     assert "[page_2] score=" in result
+
+def build_phrase_index() -> InvertedIndex:
+    index = InvertedIndex()
+    index.index_tokens(
+        "page_1",
+        "https://example.com/page1",
+        ["good", "friends", "matter"],
+        "Page 1",
+    )
+    index.index_tokens(
+        "page_2",
+        "https://example.com/page2",
+        ["friends", "are", "good"],
+        "Page 2",
+    )
+    index.index_tokens(
+        "page_3",
+        "https://example.com/page3",
+        ["good", "old", "friends"],
+        "Page 3",
+    )
+    index.index_tokens(
+        "page_4",
+        "https://example.com/page4",
+        ["good", "friends", "matter", "good", "friends"],
+        "Page 4",
+    )
+    return index
+
+
+def test_is_exact_phrase_query_detects_wrapped_double_quotes():
+    assert is_exact_phrase_query('"good friends"') is True
+    assert is_exact_phrase_query("good friends") is False
+
+
+def test_get_query_terms_removes_outer_quotes_for_phrase_queries():
+    assert get_query_terms('"Good Friends"') == ["good", "friends"]
+
+
+def test_document_contains_exact_phrase_returns_true_for_adjacent_terms():
+    index = build_phrase_index()
+
+    assert document_contains_exact_phrase(index, "page_1", ["good", "friends"]) is True
+    assert document_contains_exact_phrase(index, "page_4", ["good", "friends"]) is True
+
+
+def test_document_contains_exact_phrase_returns_false_for_non_adjacent_terms():
+    index = build_phrase_index()
+
+    assert document_contains_exact_phrase(index, "page_2", ["good", "friends"]) is False
+    assert document_contains_exact_phrase(index, "page_3", ["good", "friends"]) is False
+
+
+def test_find_matching_doc_ids_supports_exact_phrase_queries():
+    index = build_phrase_index()
+
+    result = find_matching_doc_ids(index, '"good friends"')
+
+    assert result == ["page_4", "page_1"]
+
+
+def test_format_search_results_labels_exact_phrase_queries():
+    index = build_phrase_index()
+
+    result = format_search_results(index, '"good friends"')
+
+    assert "Documents matching exact phrase: good friends" in result
+    assert "[page_1] score=" in result
+    assert "[page_4] score=" in result
+
+
+def test_format_search_results_handles_missing_exact_phrase():
+    index = build_phrase_index()
+
+    result = format_search_results(index, '"friends good"')
+
+    assert result == "No documents found for exact phrase: friends good"
