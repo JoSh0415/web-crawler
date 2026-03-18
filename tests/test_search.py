@@ -131,7 +131,8 @@ def test_format_search_results_returns_readable_matches():
     result = format_search_results(index, "good friends")
 
     assert "Documents matching query: good friends" in result
-    assert "[page_1] Page 1 - https://example.com/page1" in result
+    assert "[page_1] score=" in result
+    assert "Page 1 - https://example.com/page1" in result
 
 
 def test_format_search_results_handles_unknown_query():
@@ -148,3 +149,53 @@ def test_format_search_results_handles_empty_query():
     result = format_search_results(index, "   ")
 
     assert result == "Please enter one or more search words."
+
+def build_ranked_index() -> InvertedIndex:
+    index = InvertedIndex()
+    index.index_tokens(
+        "page_1",
+        "https://example.com/page1",
+        ["good", "friends", "good", "good"],
+        "Page 1",
+    )
+    index.index_tokens(
+        "page_2",
+        "https://example.com/page2",
+        ["good", "friends"],
+        "Page 2",
+    )
+    index.index_tokens(
+        "page_10",
+        "https://example.com/page10",
+        ["good"],
+        "Page 10",
+    )
+    return index
+
+
+def test_find_matching_doc_ids_ranks_higher_scoring_documents_first():
+    index = build_ranked_index()
+
+    result = find_matching_doc_ids(index, "good friends")
+
+    assert result == ["page_1", "page_2"]
+
+
+def test_find_matching_doc_ids_uses_natural_doc_order_for_ties():
+    index = InvertedIndex()
+    index.index_tokens("page_2", "https://example.com/page2", ["good"], "Page 2")
+    index.index_tokens("page_10", "https://example.com/page10", ["good"], "Page 10")
+
+    result = find_matching_doc_ids(index, "good")
+
+    assert result == ["page_2", "page_10"]
+
+
+def test_format_search_results_includes_rank_scores():
+    index = build_ranked_index()
+
+    result = format_search_results(index, "good friends")
+
+    assert "Documents matching query: good friends" in result
+    assert "[page_1] score=" in result
+    assert "[page_2] score=" in result
