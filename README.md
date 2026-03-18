@@ -8,6 +8,26 @@ The tool was designed to meet the coursework brief requirements for:
 - file-based index storage and retrieval
 - query processing through a command-line shell
 
+## Quick Start
+
+```bash
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+python -m src.main
+```
+
+Then, from the interactive shell:
+
+```bash
+build
+load
+print nonsense
+find indifference
+find "good friends"
+find indiffernce
+```
+
 ## Project Purpose
 
 The purpose of this project is to demonstrate how a simple search engine works in practice.
@@ -26,29 +46,27 @@ The target website is:
 
 ## Features
 
-- Crawls all unique internal pages of the target website
+- Crawls all unique internal pages of `https://quotes.toscrape.com/`
 - Respects the required **6-second politeness window** between successive requests
+- Normalises obvious first-page aliases so equivalent first pages are not indexed twice
 - Builds an **inverted index** storing:
   - document IDs
   - page URLs
   - page titles
   - term frequency per page
   - term positions per page
-- Saves the compiled index to a JSON file
-- Loads the saved index from disk
-- Supports the required shell commands:
-  - `build`
-  - `load`
-  - `print <word>`
-  - `find <query>`
-- Case-insensitive searching
-- Single-word and multi-word query support
-- Unit tests for crawler, indexer, and search functionality
+- Saves the compiled index to a JSON file and loads it later from disk
+- Uses **TF-IDF ranked retrieval** for `find <query>` results
+- Supports **exact phrase queries** using stored positional information
+- Supports **query suggestions** for misspelled search terms
+- Handles invalid or missing index files with clearer error messages
+- Includes automated tests for crawler, indexer, search logic, and CLI command flow
+- Includes coverage reporting and a GitHub Actions CI workflow
 
 ## Repository Structure
 
 ```text
-repository-name/
+web-crawler/
 ├── src/
 │   ├── crawler.py
 │   ├── indexer.py
@@ -58,8 +76,15 @@ repository-name/
 │   ├── test_crawler.py
 │   ├── test_indexer.py
 │   └── test_search.py
+├── scripts/
+│   └── benchmark.py
+├── .github/
+│   └── workflows/
+│       └── tests.yml
 ├── data/
 │   └── index.json
+├── .coveragerc
+├── pytest.ini
 ├── requirements.txt
 └── README.md
 ```
@@ -97,9 +122,11 @@ It is responsible for:
 This module is responsible for:
 - normalising terms and queries
 - retrieving postings for terms
-- formatting inverted index entries for the print command
-- finding matching documents for single-word and multi-word queries
-- formatting search output for the find command
+- formatting inverted index entries for the `print` command
+- handling ranked retrieval for `find <query>` using TF-IDF scoring
+- supporting exact phrase queries using positional adjacency
+- generating suggestions for misspelled search terms
+- formatting search output for the `find` command
 
 ### `src/main.py`
 This is the command-line shell. 
@@ -111,19 +138,30 @@ It connects the crawler, indexer, and search layers together and provides the re
 
 ## Design Rationale
 
-I used an inverted index structure because it is a natural and efficient way to support term lookups in a search tool.
+I used an inverted index because it is the standard data structure for efficient term-based retrieval.
 
-For each word, the index stores the pages where that word appears, along with:
-- how many times it appears in that page
-- the positions where it appears in that page
+For each term, the index stores the documents where that term appears, along with:
+- the term frequency in each document
+- the token positions in each document
 
 This design was chosen because it:
-- matches the coursework requirement to store word statistics such as frequency and position
+- directly supports the coursework requirement to store word statistics such as frequency and positions
 - makes `print <word>` straightforward
-- makes `find <query>` efficient for both single-word and multi-word lookups
-- supports future extensions such as phrase search or ranking improvements
+- makes single-word and multi-word search efficient
+- supports exact phrase matching by checking positional adjacency
+- supports ranked retrieval because term frequency information is already available
 
-I also separated the code into crawler, indexer, search, and shell modules so each file has a clear responsibility. This made the code easier to test, easier to debug, and easier to explain in the video demonstration.
+I chose a **page-based** index rather than indexing unique quotes as standalone records. This keeps the implementation aligned with the coursework brief, which is framed around crawling and indexing pages.
+
+I also separated the code into crawler, indexer, search, and shell modules so that:
+- each file has a clear responsibility
+- the code is easier to test and debug
+- the architecture is easier to explain in the video demonstration
+
+As an extension beyond the baseline requirements, I added:
+- **TF-IDF ranking** so `find` results are ordered by relevance rather than document ID
+- **exact phrase queries** such as `find "good friends"` using stored term positions
+- **query suggestions** for misspelled search terms such as `find indiffernce`
 
 ## Installation and Setup
 
@@ -205,7 +243,7 @@ Index entry for 'nonsense':
 ```
 
 ### `find <query>`
-Searches the index and returns pages containing the query terms.
+Searches the index and returns matching pages.
 
 Single-word example:
 ```shell
@@ -216,7 +254,22 @@ Multi-word example:
 ```shell
 > find good friends
 ```
-Multi-word queries use AND logic, so only pages containing all query words are returned.
+
+Normal multi-word queries use AND logic, so only pages containing all query words are returned.
+
+Exact phrase example:
+```shell
+> find "good friends"
+```
+
+Quoted phrase queries return only pages where the words appear adjacently in that order.
+
+Misspelling suggestion example:
+```shell
+> find indiffernce
+```
+
+If no results are found and one or more terms look misspelled, the tool suggests the closest indexed terms.
 
 ### `help`
 Shows the list of available commands.
@@ -232,10 +285,19 @@ Exits the shell.
 
 ## Testing
 
-This project is configured to collect coverage for the `src/` package and enforce a minimum coverage threshold.
+The project includes automated tests for:
+- crawler behaviour
+- indexer data structures and serialisation
+- search and retrieval logic
+- CLI command flow and user-facing error handling
 
+The test suite is configured to:
+- collect coverage for the `src/` package
+- enforce a minimum coverage threshold
+- generate terminal, XML, and HTML coverage reports
 
-To run all tests and view detailed coverage output:
+Run the full test suite with:
+
 ```bash
 python -m pytest
 ```
@@ -248,39 +310,37 @@ This generates:
 
 - an HTML coverage report in `htmlcov/`
 
-To open the HTML report locally after running the tests:
+To inspect the HTML coverage report locally, `open htmlcov/index.html` in a browser.
 
-```bash
-open htmlcov/index.html
-```
+You can also run individual test files:
 
-On GitHub, tests and coverage also run automatically using GitHub Actions on every push and pull request.
-
-To run specific test files:
 ```bash
 python -m pytest tests/test_crawler.py
 python -m pytest tests/test_indexer.py
 python -m pytest tests/test_search.py
 ```
 
+On GitHub, tests and coverage also run automatically on pushes and pull requests using GitHub Actions.
+
 ## Testing Strategy
 
-The project was tested incrementally as each component was developed.
+The project was tested incrementally as each component was developed, and the final test suite includes both happy-path and failure-path behaviour.
 
-### `test_crawler.py`
+### `tests/test_crawler.py`
 Covers:
 - HTML parsing
-- quote text extraction
+- quote extraction
 - page title extraction
-- next-page URL detection
+- next-page handling
 - tokenisation
 - internal link extraction
 - URL normalisation
 - adding page data into the index
 - crawling multiple linked pages using mocked responses
 - retry / failure handling behaviour
+- session cleanup on unexpected crawler errors
 
-### `test_indexer.py`
+### `tests/test_indexer.py`
 Covers:
 - document storage
 - posting frequency and positions
@@ -289,16 +349,22 @@ Covers:
 - multi-word document matching
 - JSON serialisation and deserialisation
 - save/load round-trip behaviour
+- invalid JSON / malformed index-file validation
+- storage integrity checks such as frequency-position consistency
 
-### `test_search.py`
+### `tests/test_search.py`
 Covers:
 - term and query normalisation
 - postings lookup
 - formatting index entries
-- single-word search
-- multi-word search using AND logic
+- TF-IDF-ranked retrieval
+- exact phrase query matching
+- misspelling suggestions
+- single-word and multi-word search
 - unknown-word handling
 - empty query handling
+- CLI command parsing and routing
+- shell-level error handling for missing index / failed load / interrupted input
 
 ## Performance and Complexity
 
@@ -402,24 +468,30 @@ A typical use of the tool looks like this:
 
 ## Notes and Limitations
 
-- The tool is designed specifically for the coursework target website: `https://quotes.toscrape.com/`
+- The tool is designed specifically for the coursework target site: `https://quotes.toscrape.com/`
+- The crawler indexes **pages**, not unique quotes as standalone records
 - Search is case-insensitive
-- Query processing currently uses simple AND-style matching
-- The current implementation does not include ranking such as TF-IDF
-- The index is saved as a single JSON file for simplicity
-- The crawler indexes all unique internal pages on `quotes.toscrape.com`, not just the main paginated quote pages
-- Obvious first-page aliases such as `/page/1/` and `/tag/<slug>/page/1/` are normalised so equivalent first pages are not indexed twice
+- Normal multi-word queries use AND semantics
+- Exact phrase queries are supported only when the query is wrapped in double quotes
+- Query suggestions are heuristic and intended for likely misspellings, not semantic rewriting
+- The index is stored as a single JSON file for simplicity rather than a compressed or database-backed format
+- Real end-to-end build time is dominated by network latency and the required 6-second politeness delay
+- URL normalisation currently targets obvious first-page aliases such as `/page/1/` and `/tag/<slug>/page/1/`
 
 ## External Libraries and Resources
 
-This project uses:
-- Requests documentation: for HTTP requests and session handling
-- Beautiful Soup 4 documentation: for HTML parsing
-- urllib3 Retry / requests HTTPAdapter behaviour: for transient request retry handling
-- Pytest documentation: for automated testing
+This project used the following external resources and documentation:
 
-The target practice website was:
-- `https://quotes.toscrape.com/`
+- Microsoft Secure Copilot - Idea and code understanding/generation
+- Python Requests documentation - HTTP requests and session handling
+- Beautiful Soup 4 documentation - HTML parsing and extraction
+- urllib3 Retry / requests HTTPAdapter documentation - transient retry behaviour
+- Pytest documentation - automated testing
+- pytest-cov documentation - coverage reporting
+- GitHub Actions documentation - CI workflow setup
+- `https://quotes.toscrape.com/` - coursework practice target website
+
+These were used as technical references for implementation details, not as substitutes for the project design itself.
 
 ## Submission Notes
 
