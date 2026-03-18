@@ -1,4 +1,5 @@
-from src.indexer import InvertedIndex
+from src.indexer import InvertedIndex, save_index, load_index
+
 
 def test_add_document_stores_metadata():
     """Adding a document should store its ID, URL, and title."""
@@ -83,3 +84,72 @@ def test_empty_query_returns_empty_list():
     result = index.find_documents([])
 
     assert result == []
+
+
+def test_to_dict_contains_documents_and_index_data():
+    """Serialising the index should include both documents and postings data."""
+    index = InvertedIndex()
+    index.index_tokens(
+        "page_1",
+        "https://example.com/page1",
+        ["good", "friends", "are", "good"],
+        "Page 1",
+    )
+
+    data = index.to_dict()
+
+    assert "documents" in data
+    assert "index" in data
+    assert "page_1" in data["documents"]
+    assert data["documents"]["page_1"]["url"] == "https://example.com/page1"
+    assert "good" in data["index"]
+    assert data["index"]["good"]["page_1"]["frequency"] == 2
+    assert data["index"]["good"]["page_1"]["positions"] == [0, 3]
+
+
+def test_from_dict_rebuilds_inverted_index_correctly():
+    """Deserialising from a dictionary should rebuild the same index content."""
+    index = InvertedIndex()
+    index.index_tokens(
+        "page_1",
+        "https://example.com/page1",
+        ["good", "friends", "are", "good"],
+        "Page 1",
+    )
+
+    data = index.to_dict()
+    rebuilt = InvertedIndex.from_dict(data)
+
+    assert "page_1" in rebuilt.documents
+    assert rebuilt.documents["page_1"].title == "Page 1"
+    assert rebuilt.get_postings("good")["page_1"].frequency == 2
+    assert rebuilt.get_postings("good")["page_1"].positions == [0, 3]
+    assert rebuilt.find_documents(["good", "friends"]) == ["page_1"]
+
+
+def test_save_and_load_index_round_trip(tmp_path):
+    """Saving to JSON and loading back should preserve the full index."""
+    index = InvertedIndex()
+    index.index_tokens(
+        "page_1",
+        "https://example.com/page1",
+        ["good", "friends", "are", "good"],
+        "Page 1",
+    )
+    index.index_tokens(
+        "page_2",
+        "https://example.com/page2",
+        ["indifference", "is", "dangerous"],
+        "Page 2",
+    )
+
+    file_path = tmp_path / "index.json"
+
+    save_index(index, file_path)
+    loaded = load_index(file_path)
+
+    assert "page_1" in loaded.documents
+    assert loaded.documents["page_2"].title == "Page 2"
+    assert loaded.get_postings("good")["page_1"].frequency == 2
+    assert loaded.get_postings("indifference")["page_2"].positions == [0]
+    assert loaded.find_documents(["good", "friends"]) == ["page_1"]
