@@ -253,76 +253,77 @@ def crawl_all_pages(
 
     print(f"Starting crawl from: {start_url}")
 
-    while url_queue:
-        current_url = url_queue.popleft()
-        queued_urls.discard(current_url)
+    try:
+        while url_queue:
+            current_url = url_queue.popleft()
+            queued_urls.discard(current_url)
 
-        if current_url in visited_urls:
-            continue
+            if current_url in visited_urls:
+                continue
 
-        print()
-        print(f"Crawling page {page_number}: {current_url}")
-        print(f"Visited so far: {len(visited_urls)} | Still queued: {len(url_queue)}")
+            print()
+            print(f"Crawling page {page_number}: {current_url}")
+            print(f"Visited so far: {len(visited_urls)} | Still queued: {len(url_queue)}")
 
-        if last_request_time is not None:
-            elapsed = time.monotonic() - last_request_time
-            if elapsed < politeness_delay:
-                wait_time = politeness_delay - elapsed
-                print(f"Waiting {wait_time:.2f}s to respect politeness delay...")
-                time.sleep(wait_time)
+            if last_request_time is not None:
+                elapsed = time.monotonic() - last_request_time
+                if elapsed < politeness_delay:
+                    wait_time = politeness_delay - elapsed
+                    print(f"Waiting {wait_time:.2f}s to respect politeness delay...")
+                    time.sleep(wait_time)
 
-        page_data = scrape_single_page(current_url, session=session)
-        last_request_time = time.monotonic()
+            page_data = scrape_single_page(current_url, session=session)
+            last_request_time = time.monotonic()
 
-        if page_data is None:
-            failed_attempts[current_url] = failed_attempts.get(current_url, 0) + 1
-            attempt_number = failed_attempts[current_url]
+            if page_data is None:
+                failed_attempts[current_url] = failed_attempts.get(current_url, 0) + 1
+                attempt_number = failed_attempts[current_url]
 
-            if attempt_number < MAX_FETCH_ATTEMPTS_PER_URL:
-                print(
-                    f"Re-queueing {current_url} "
-                    f"(attempt {attempt_number + 1}/{MAX_FETCH_ATTEMPTS_PER_URL})"
-                )
-                if current_url not in queued_urls:
-                    url_queue.append(current_url)
-                    queued_urls.add(current_url)
-            else:
-                print(f"Giving up on URL after {attempt_number} failed attempts: {current_url}")
-                visited_urls.add(current_url)
+                if attempt_number < MAX_FETCH_ATTEMPTS_PER_URL:
+                    print(
+                        f"Re-queueing {current_url} "
+                        f"(attempt {attempt_number + 1}/{MAX_FETCH_ATTEMPTS_PER_URL})"
+                    )
+                    if current_url not in queued_urls:
+                        url_queue.append(current_url)
+                        queued_urls.add(current_url)
+                else:
+                    print(f"Giving up on URL after {attempt_number} failed attempts: {current_url}")
+                    visited_urls.add(current_url)
 
-            continue
+                continue
 
-        visited_urls.add(current_url)
+            visited_urls.add(current_url)
 
-        title = page_data["title"]
-        quote_texts = page_data["quotes"]
-        page_text = page_data["text"]
+            title = page_data["title"]
+            quote_texts = page_data["quotes"]
+            page_text = page_data["text"]
 
-        doc_id = f"page_{page_number}"
-        add_page_to_index(
-            index=index,
-            doc_id=doc_id,
-            url=current_url,
-            title=title,
-            quote_texts=quote_texts,
-            page_text=page_text,
-        )
+            doc_id = f"page_{page_number}"
+            add_page_to_index(
+                index=index,
+                doc_id=doc_id,
+                url=current_url,
+                title=title,
+                quote_texts=quote_texts,
+                page_text=page_text,
+            )
 
-        print(f"Indexed {doc_id}: '{title}'")
-        print(f"Quotes found on page: {len(quote_texts)}")
+            print(f"Indexed {doc_id}: '{title}'")
+            print(f"Quotes found on page: {len(quote_texts)}")
 
-        new_links_count = 0
-        for link in page_data["links"]:
-            if link not in visited_urls and link not in queued_urls:
-                url_queue.append(link)
-                queued_urls.add(link)
-                new_links_count += 1
+            new_links_count = 0
+            for link in page_data["links"]:
+                if link not in visited_urls and link not in queued_urls:
+                    url_queue.append(link)
+                    queued_urls.add(link)
+                    new_links_count += 1
 
-        print(f"New internal links queued: {new_links_count}")
+            print(f"New internal links queued: {new_links_count}")
 
-        page_number += 1
-
-    session.close()
+            page_number += 1
+    finally:
+        session.close()
 
     print()
     print("Crawl complete.")
