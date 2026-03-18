@@ -158,6 +158,7 @@ The project uses the following main dependencies:
 - requests – for HTTP requests
 - beautifulsoup4 – for HTML parsing
 - pytest – for automated testing
+- pytest-cov - for test coverage
 
 Install them using:
 ```bash
@@ -231,16 +232,35 @@ Exits the shell.
 
 ## Testing
 
-To run all tests:
+This project is configured to collect coverage for the `src/` package and enforce a minimum coverage threshold.
+
+
+To run all tests and view detailed coverage output:
 ```bash
-pytest
+python -m pytest
 ```
+
+This generates:
+
+- terminal coverage output
+
+- `coverage.xml`
+
+- an HTML coverage report in `htmlcov/`
+
+To open the HTML report locally after running the tests:
+
+```bash
+open htmlcov/index.html
+```
+
+On GitHub, tests and coverage also run automatically using GitHub Actions on every push and pull request.
 
 To run specific test files:
 ```bash
-pytest tests/test_crawler.py
-pytest tests/test_indexer.py
-pytest tests/test_search.py
+python -m pytest tests/test_crawler.py
+python -m pytest tests/test_indexer.py
+python -m pytest tests/test_search.py
 ```
 
 ## Testing Strategy
