@@ -584,3 +584,34 @@ def test_handle_find_uses_loaded_index(monkeypatch, capsys):
 
     captured = capsys.readouterr()
     assert "Documents matching query: good friends" in captured.out
+
+
+def test_run_shell_exits_cleanly_on_eof(monkeypatch, capsys):
+    def fake_input(prompt: str) -> str:
+        raise EOFError
+
+    monkeypatch.setattr("builtins.input", fake_input)
+
+    main.run_shell()
+
+    captured = capsys.readouterr()
+    assert "Search tool shell" in captured.out
+    assert "Goodbye!" in captured.out
+
+
+def test_run_shell_handles_keyboard_interrupt_then_exit(monkeypatch, capsys):
+    responses = iter([KeyboardInterrupt(), "exit"])
+
+    def fake_input(prompt: str) -> str:
+        response = next(responses)
+        if isinstance(response, BaseException):
+            raise response
+        return response
+
+    monkeypatch.setattr("builtins.input", fake_input)
+
+    main.run_shell()
+
+    captured = capsys.readouterr()
+    assert "Interrupted. Type 'exit' to quit." in captured.out
+    assert "Goodbye!" in captured.out
