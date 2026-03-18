@@ -16,10 +16,15 @@ def handle_build() -> None:
     print("Building index...")
     print("This may take a while because the crawler respects the 6-second politeness delay.")
 
-    index = crawl_all_pages()
-    save_index(index, INDEX_FILE)
-    LOADED_INDEX = index
+    try:
+        index = crawl_all_pages()
+        save_index(index, INDEX_FILE)
+    except Exception as exc:
+        print("Build failed.")
+        print(f"Reason: {exc}")
+        return
 
+    LOADED_INDEX = index
     print(f"Index built and saved to {INDEX_FILE}")
 
 
@@ -36,6 +41,7 @@ def handle_load() -> None:
         LOADED_INDEX = load_index(INDEX_FILE)
         print(f"Index loaded from {INDEX_FILE}")
     except Exception as exc:
+        LOADED_INDEX = None
         print("Could not load the index file.")
         print(f"Reason: {exc}")
 
@@ -143,6 +149,9 @@ def run_shell() -> None:
         except EOFError:
             print("\nGoodbye!")
             break
+        except Exception as exc:
+            print("Unexpected error while processing command.")
+            print(f"Reason: {exc}")
 
 
 if __name__ == "__main__":

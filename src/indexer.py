@@ -1,7 +1,9 @@
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Union
+from typing import Any, Dict, List, Union
 import json
+import os
+import tempfile
 
 
 @dataclass
@@ -69,7 +71,6 @@ class InvertedIndex:
             return []
 
         normalised_terms = [term.lower() for term in query_terms]
-
         matching_docs = set(self.index.get(normalised_terms[0], {}).keys())
 
         for term in normalised_terms[1:]:
@@ -104,16 +105,20 @@ class InvertedIndex:
     @classmethod
     def from_dict(cls, data: dict) -> "InvertedIndex":
         """Rebuild an InvertedIndex from saved dictionary data."""
+        validate_index_data(data)
+
         new_index = cls()
 
-        for doc_id, doc_data in data.get("documents", {}).items():
+        documents_data = data["documents"]
+        for doc_id, doc_data in documents_data.items():
             new_index.documents[doc_id] = Document(
                 doc_id=doc_data["doc_id"],
                 url=doc_data["url"],
                 title=doc_data.get("title", ""),
             )
 
-        for term, postings in data.get("index", {}).items():
+        index_data = data["index"]
+        for term, postings in index_data.items():
             new_index.index[term] = {}
             for doc_id, posting_data in postings.items():
                 new_index.index[term][doc_id] = Posting(
@@ -124,20 +129,118 @@ class InvertedIndex:
         return new_index
 
 
+def validate_index_data(data: Any) -> None:
+    """Validate the shape of loaded JSON before rebuilding the index."""
+    if not isinstance(data, dict):
+        raise ValueError("Index file must contain a top-level JSON object.")
+
+    if "documents" not in data or "index" not in data:
+        raise ValueError("Index file must contain 'documents' and 'index' sections.")
+
+    if not isinstance(data["documents"], dict):
+        raise ValueError("'documents' must be a JSON object mapping doc IDs to metadata.")
+
+    if not isinstance(data["index"], dict):
+        raise ValueError("'index' must be a JSON object mapping terms to postings.")
+
+    for doc_id, doc_data in data["documents"].items():
+        if not isinstance(doc_id, str):
+            raise ValueError("Document IDs in 'documents' must be strings.")
+
+        if not isinstance(doc_data, dict):
+            raise ValueError(f"Document entry for '{doc_id}' must be an object.")
+
+        if "doc_id" not in doc_data or "url" not in doc_data:
+            raise ValueError(
+                f"Document entry for '{doc_id}' must include 'doc_id' and 'url'."
+            )
+
+        if not isinstance(doc_data["doc_id"], str):
+            raise ValueError(f"'doc_id' for document '{doc_id}' must be a string.")
+
+        if not isinstance(doc_data["url"], str):
+            raise ValueError(f"'url' for document '{doc_id}' must be a string.")
+
+        if "title" in doc_data and not isinstance(doc_data["title"], str):
+            raise ValueError(f"'title' for document '{doc_id}' must be a string.")
+
+    for term, postings in data["index"].items():
+        if not isinstance(term, str):
+            raise ValueError("Terms in 'index' must be strings.")
+
+        if not isinstance(postings, dict):
+            raise ValueError(f"Postings for term '{term}' must be an object.")
+
+        for doc_id, posting_data in postings.items():
+            if not isinstance(doc_id, str):
+                raise ValueError(f"Posting doc ID for term '{term}' must be a string.")
+
+            if not isinstance(posting_data, dict):
+                raise ValueError(
+                    f"Posting entry for term '{term}' and document '{doc_id}' must be an object."
+                )
+
+            if "frequency" not in posting_data or "positions" not in posting_data:
+                raise ValueError(
+                    f"Posting entry for term '{term}' and document '{doc_id}' must include "
+                    "'frequency' and 'positions'."
+                )
+
+            frequency = posting_data["frequency"]
+            positions = posting_data["positions"]
+
+            if not isinstance(frequency, int) or frequency < 0:
+                raise ValueError(
+                    f"'frequency' for term '{term}' and document '{doc_id}' must be a "
+                    "non-negative integer."
+                )
+
+            if not isinstance(positions, list) or not all(isinstance(pos, int) for pos in positions):
+                raise ValueError(
+                    f"'positions' for term '{term}' and document '{doc_id}' must be a list of integers."
+                )
+
+            if frequency != len(positions):
+                raise ValueError(
+                    f"'frequency' for term '{term}' and document '{doc_id}' must match the number of positions."
+                )
+
+
 def save_index(index: InvertedIndex, filename: Union[str, Path]) -> None:
-    """Save the index to a JSON file."""
+    """Save the index to a JSON file atomically."""
     path = Path(filename)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    with path.open("w", encoding="utf-8") as file:
-        json.dump(index.to_dict(), file, indent=2, ensure_ascii=False)
+    fd, temp_path_str = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        dir=str(path.parent),
+    )
+    temp_path = Path(temp_path_str)
+
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as file:
+            json.dump(index.to_dict(), file, indent=2, ensure_ascii=False)
+            file.flush()
+            os.fsync(file.fileno())
+
+        temp_path.replace(path)
+    except Exception:
+        if temp_path.exists():
+            temp_path.unlink()
+        raise
 
 
 def load_index(filename: Union[str, Path]) -> InvertedIndex:
-    """Load an index from a JSON file."""
+    """Load an index from a JSON file with validation and clearer errors."""
     path = Path(filename)
 
-    with path.open("r", encoding="utf-8") as file:
-        data = json.load(file)
+    try:
+        with path.open("r", encoding="utf-8") as file:
+            data = json.load(file)
+    except FileNotFoundError:
+        raise FileNotFoundError(f"Index file not found: {path}") from None
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Index file is not valid JSON: {exc}") from exc
 
     return InvertedIndex.from_dict(data)

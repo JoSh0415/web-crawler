@@ -1,4 +1,5 @@
 from src.indexer import InvertedIndex, save_index, load_index
+import json
 
 
 def test_add_document_stores_metadata():
@@ -153,3 +154,67 @@ def test_save_and_load_index_round_trip(tmp_path):
     assert loaded.get_postings("good")["page_1"].frequency == 2
     assert loaded.get_postings("indifference")["page_2"].positions == [0]
     assert loaded.find_documents(["good", "friends"]) == ["page_1"]
+
+
+def test_load_index_raises_clear_error_for_invalid_json(tmp_path):
+    file_path = tmp_path / "index.json"
+    file_path.write_text("{not valid json", encoding="utf-8")
+
+    try:
+        load_index(file_path)
+        assert False, "Expected ValueError for invalid JSON"
+    except ValueError as exc:
+        assert "Index file is not valid JSON" in str(exc)
+
+
+def test_load_index_raises_clear_error_for_missing_sections(tmp_path):
+    file_path = tmp_path / "index.json"
+    file_path.write_text(json.dumps({"documents": {}}), encoding="utf-8")
+
+    try:
+        load_index(file_path)
+        assert False, "Expected ValueError for missing index section"
+    except ValueError as exc:
+        assert "must contain 'documents' and 'index' sections" in str(exc)
+
+
+def test_load_index_rejects_frequency_position_mismatch(tmp_path):
+    bad_data = {
+        "documents": {
+            "page_1": {
+                "doc_id": "page_1",
+                "url": "https://example.com/page1",
+                "title": "Page 1",
+            }
+        },
+        "index": {
+            "good": {
+                "page_1": {
+                    "frequency": 2,
+                    "positions": [0],
+                }
+            }
+        },
+    }
+
+    file_path = tmp_path / "index.json"
+    file_path.write_text(json.dumps(bad_data), encoding="utf-8")
+
+    try:
+        load_index(file_path)
+        assert False, "Expected ValueError for invalid posting data"
+    except ValueError as exc:
+        assert "must match the number of positions" in str(exc)
+
+
+def test_save_index_is_atomic_and_does_not_leave_temp_files(tmp_path):
+    index = InvertedIndex()
+    index.index_tokens("page_1", "https://example.com/page1", ["good"], "Page 1")
+
+    file_path = tmp_path / "index.json"
+    save_index(index, file_path)
+
+    assert file_path.exists()
+
+    temp_files = list(tmp_path.glob(".*.tmp"))
+    assert temp_files == []

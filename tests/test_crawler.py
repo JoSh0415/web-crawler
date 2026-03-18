@@ -232,3 +232,33 @@ def test_crawl_all_pages_retries_failed_page_then_gives_up(monkeypatch):
 
     assert "page_1" in index.documents
     assert "page_2" not in index.documents
+
+
+def test_crawl_all_pages_closes_session_when_unexpected_error_occurs(monkeypatch):
+    from src import crawler
+
+    class DummySession:
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    dummy_session = DummySession()
+
+    def fake_build_session():
+        return dummy_session
+
+    def fake_scrape_single_page(url: str, session=None):
+        raise RuntimeError("unexpected scrape failure")
+
+    monkeypatch.setattr(crawler, "build_session", fake_build_session)
+    monkeypatch.setattr(crawler, "scrape_single_page", fake_scrape_single_page)
+
+    try:
+        crawler.crawl_all_pages(politeness_delay=0)
+        assert False, "Expected RuntimeError from fake scrape"
+    except RuntimeError as exc:
+        assert str(exc) == "unexpected scrape failure"
+
+    assert dummy_session.closed is True
