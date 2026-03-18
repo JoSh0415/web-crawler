@@ -1,21 +1,74 @@
+from pathlib import Path
+from typing import Optional
+
+from crawler import crawl_all_pages
+from indexer import InvertedIndex, load_index, save_index
+from search import format_index_entry, format_search_results
+
+INDEX_FILE = Path("data/index.json")
+LOADED_INDEX: Optional[InvertedIndex] = None
+
+
 def handle_build() -> None:
-    """Placeholder for the build command."""
-    print("[build] Placeholder: this will crawl the site, build the index, and save it.")
+    """Crawl the site, build the index, save it, and keep it loaded in memory."""
+    global LOADED_INDEX
+
+    print("Building index...")
+    print("This may take a while because the crawler respects the 6-second politeness delay.")
+
+    index = crawl_all_pages()
+    save_index(index, INDEX_FILE)
+    LOADED_INDEX = index
+
+    print(f"Index built and saved to {INDEX_FILE}")
 
 
 def handle_load() -> None:
-    """Placeholder for the load command."""
-    print("[load] Placeholder: this will load a saved index from disk.")
+    """Load the saved index from disk into memory."""
+    global LOADED_INDEX
+
+    if not INDEX_FILE.exists():
+        print(f"No saved index file found at {INDEX_FILE}")
+        print("Run 'build' first to create the index.")
+        return
+
+    try:
+        LOADED_INDEX = load_index(INDEX_FILE)
+        print(f"Index loaded from {INDEX_FILE}")
+    except Exception as exc:
+        print("Could not load the index file.")
+        print(f"Reason: {exc}")
 
 
 def handle_print(word: str) -> None:
-    """Placeholder for the print command."""
-    print(f"[print] Placeholder: this will print the inverted index entry for '{word}'.")
+    """Print the inverted index entry for one word."""
+    if LOADED_INDEX is None:
+        print("No index is loaded.")
+        print("Use 'build' or 'load' before running 'print'.")
+        return
+
+    print(format_index_entry(LOADED_INDEX, word))
 
 
 def handle_find(query: str) -> None:
-    """Placeholder for the find command."""
-    print(f"[find] Placeholder: this will search the index for '{query}'.")
+    """Print search results for a single-word or multi-word query."""
+    if LOADED_INDEX is None:
+        print("No index is loaded.")
+        print("Use 'build' or 'load' before running 'find'.")
+        return
+
+    print(format_search_results(LOADED_INDEX, query))
+
+
+def print_help() -> None:
+    """Print the list of supported commands."""
+    print("Available commands:")
+    print("  build              Crawl the site, build the index, and save it")
+    print("  load               Load the saved index from disk")
+    print("  print <word>       Print the inverted index entry for one word")
+    print("  find <query>       Search for one or more words")
+    print("  help               Show this help message")
+    print("  exit / quit        Exit the program")
 
 
 def process_command(user_input: str) -> bool:
@@ -32,6 +85,10 @@ def process_command(user_input: str) -> bool:
     if text.lower() in {"exit", "quit"}:
         print("Goodbye!")
         return False
+
+    if text.lower() == "help":
+        print_help()
+        return True
 
     parts = text.split()
     command = parts[0].lower()
@@ -64,7 +121,7 @@ def process_command(user_input: str) -> bool:
 
     else:
         print(f"Unknown command: {command}")
-        print("Available commands: build, load, print <word>, find <query>, exit")
+        print("Available commands: build, load, print <word>, find <query>, help, exit")
 
     return True
 
@@ -73,6 +130,7 @@ def run_shell() -> None:
     """Start the interactive shell."""
     print("Search tool shell")
     print("Type a command: build, load, print <word>, find <query>")
+    print("Type 'help' for more information.")
     print("Type 'exit' or 'quit' to leave.")
 
     running = True
