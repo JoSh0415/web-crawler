@@ -300,6 +300,51 @@ Covers:
 - unknown-word handling
 - empty query handling
 
+## Performance and Complexity
+
+The crawler, indexer, and search logic were designed to use data structures that keep lookup and retrieval efficient.
+
+### Complexity overview
+
+Let:
+- `P` = number of pages crawled
+- `T` = total number of indexed token occurrences across all pages
+- `m` = number of terms in a query
+- `df(t)` = document frequency of term `t`
+- `r` = number of matched result documents
+
+**Build / crawl**
+- The crawler processes pages incrementally and indexes tokens as pages are fetched.
+- Ignoring network latency, HTML parsing and indexing are approximately linear in the amount of text processed, so the indexing work is roughly proportional to `T`.
+- In practice, total build time is dominated by network latency and the required 6-second politeness delay between requests.
+
+**`print <word>`**
+- Dictionary lookup for a term is approximately `O(1)` on average.
+- Formatting output is proportional to the number of postings for that word, so the overall cost is approximately `O(df(term))`.
+
+**`find <query>`**
+- Normal multi-word queries use AND semantics.
+- Candidate documents are found by intersecting the posting sets for each query term.
+- A practical approximation is `O(df(t1) + df(t2) + ... + df(tm))` for the set construction/intersection work, followed by ranking work over the matched results.
+- Ranking the matched documents adds approximately `O(r * m)` scoring work plus sorting cost.
+
+**Exact phrase queries**
+- Exact phrase queries first use AND matching to find candidate documents, then use stored positional information to check adjacency.
+- This is more precise than normal AND search but adds extra positional checking work per candidate document.
+
+**Suggestions**
+- Query suggestions are only attempted when a search returns no results.
+- Suggestion generation compares unknown terms against the indexed vocabulary, so it is a fallback convenience feature rather than part of the normal fast path.
+
+### Design trade-offs
+
+I chose a page-based inverted index using dictionaries because it makes:
+- term lookup simple,
+- storage format easy to serialise to JSON,
+- and query processing straightforward to explain in the video.
+
+I also stored term positions, not just frequencies, because this supports exact phrase matching rather than only single-word or unordered multi-word search.
+
 ## Example Workflow
 
 A typical use of the tool looks like this:
