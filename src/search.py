@@ -14,6 +14,28 @@ def normalise_query(query: str) -> List[str]:
     return [part.strip().lower() for part in query.split() if part.strip()]
 
 
+def is_exact_phrase_query(query: str) -> bool:
+    """Return True if the user entered a query wrapped in double quotes."""
+    stripped = query.strip()
+    return len(stripped) >= 2 and stripped.startswith('"') and stripped.endswith('"')
+
+
+def get_query_terms(query: str) -> List[str]:
+    """
+    Return the cleaned terms for a query.
+
+    For exact phrase queries like:
+        "good friends"
+    the surrounding double quotes are removed before tokenisation.
+    """
+    stripped = query.strip()
+
+    if is_exact_phrase_query(stripped):
+        stripped = stripped[1:-1]
+
+    return normalise_query(stripped)
+
+
 def get_postings_for_term(index: InvertedIndex, term: str) -> dict[str, Posting]:
     """Return the postings dictionary for one term."""
     normalised = normalise_term(term)
@@ -62,10 +84,6 @@ def get_inverse_document_frequency(index: InvertedIndex, term: str) -> float:
 
     Formula:
         idf = log((N + 1) / (df + 1)) + 1
-
-    where:
-    - N is the total number of indexed documents
-    - df is the number of documents containing the term
     """
     total_documents = len(index.documents)
     document_frequency = get_document_frequency(index, term)
@@ -82,8 +100,6 @@ def get_tf_idf_score(index: InvertedIndex, doc_id: str, query_terms: List[str]) 
 
     Term frequency weight:
         tf_weight = 1 + log(tf)
-
-    Query terms are summed to produce a final score.
     """
     score = 0.0
 
@@ -102,11 +118,7 @@ def get_tf_idf_score(index: InvertedIndex, doc_id: str, query_terms: List[str]) 
 
 
 def natural_doc_id_key(doc_id: str) -> tuple[int, str]:
-    """
-    Return a key that sorts page_2 before page_10.
-
-    This is used only as a tie-break when ranked scores are equal.
-    """
+    """Return a key that sorts page_2 before page_10."""
     if doc_id.startswith("page_"):
         suffix = doc_id.removeprefix("page_")
         if suffix.isdigit():
@@ -115,34 +127,96 @@ def natural_doc_id_key(doc_id: str) -> tuple[int, str]:
     return (1, doc_id)
 
 
-def rank_matching_doc_ids(index: InvertedIndex, query: str) -> List[str]:
+def document_contains_exact_phrase(index: InvertedIndex, doc_id: str, query_terms: List[str]) -> bool:
     """
-    Return matching document IDs ranked by TF-IDF score.
+    Return True if the document contains the exact phrase.
 
-    Query semantics remain AND-based:
-    all returned documents must contain every query term.
+    Example:
+    - query_terms = ["good", "friends"]
+    - this returns True only if 'good' is immediately followed by 'friends'
+      somewhere in the document.
     """
-    terms = normalise_query(query)
+    if not query_terms:
+        return False
 
-    if not terms:
+    if len(query_terms) == 1:
+        return doc_id in get_postings_for_term(index, query_terms[0])
+
+    postings_for_first_term = get_postings_for_term(index, query_terms[0])
+    first_posting = postings_for_first_term.get(doc_id)
+
+    if first_posting is None:
+        return False
+
+    candidate_starts = set(first_posting.positions)
+
+    for offset, term in enumerate(query_terms[1:], start=1):
+        posting = get_postings_for_term(index, term).get(doc_id)
+        if posting is None:
+            return False
+
+        shifted_positions = {position - offset for position in posting.positions}
+        candidate_starts = candidate_starts.intersection(shifted_positions)
+
+        if not candidate_starts:
+            return False
+
+    return True
+
+
+def get_exact_phrase_matches(index: InvertedIndex, query_terms: List[str]) -> List[str]:
+    """
+    Return document IDs that contain the exact phrase.
+
+    The function first narrows candidates using AND matching,
+    then checks positional adjacency using stored term positions.
+    """
+    if not query_terms:
         return []
 
-    matching_doc_ids = index.find_documents(terms)
+    candidate_doc_ids = index.find_documents(query_terms)
 
-    ranked_doc_ids = sorted(
-        matching_doc_ids,
+    exact_matches = [
+        doc_id
+        for doc_id in candidate_doc_ids
+        if document_contains_exact_phrase(index, doc_id, query_terms)
+    ]
+
+    return exact_matches
+
+
+def rank_doc_ids(index: InvertedIndex, doc_ids: List[str], query_terms: List[str]) -> List[str]:
+    """Return document IDs ranked by TF-IDF score, with natural tie-breaking."""
+    return sorted(
+        doc_ids,
         key=lambda doc_id: (
-            -get_tf_idf_score(index, doc_id, terms),
+            -get_tf_idf_score(index, doc_id, query_terms),
             natural_doc_id_key(doc_id),
         ),
     )
 
-    return ranked_doc_ids
-
 
 def find_matching_doc_ids(index: InvertedIndex, query: str) -> List[str]:
-    """Return matching document IDs for a query, ranked by relevance."""
-    return rank_matching_doc_ids(index, query)
+    """
+    Return matching document IDs for a query.
+
+    Supported modes:
+    - normal query: AND search
+      example: good friends
+    - exact phrase query: adjacency search using positions
+      example: "good friends"
+    """
+    terms = get_query_terms(query)
+
+    if not terms:
+        return []
+
+    if is_exact_phrase_query(query):
+        matches = get_exact_phrase_matches(index, terms)
+    else:
+        matches = index.find_documents(terms)
+
+    return rank_doc_ids(index, matches, terms)
 
 
 def find_matching_documents(index: InvertedIndex, query: str) -> List[Document]:
@@ -152,8 +226,8 @@ def find_matching_documents(index: InvertedIndex, query: str) -> List[Document]:
 
 
 def format_search_results(index: InvertedIndex, query: str) -> str:
-    """Return a readable string for ranked search results."""
-    terms = normalise_query(query)
+    """Return a readable string for search results."""
+    terms = get_query_terms(query)
 
     if not terms:
         return "Please enter one or more search words."
@@ -161,9 +235,14 @@ def format_search_results(index: InvertedIndex, query: str) -> str:
     ranked_doc_ids = find_matching_doc_ids(index, query)
 
     if not ranked_doc_ids:
+        if is_exact_phrase_query(query):
+            return f'No documents found for exact phrase: {" ".join(terms)}'
         return f"No documents found for query: {' '.join(terms)}"
 
-    lines = [f"Documents matching query: {' '.join(terms)}"]
+    if is_exact_phrase_query(query):
+        lines = [f'Documents matching exact phrase: {" ".join(terms)}']
+    else:
+        lines = [f"Documents matching query: {' '.join(terms)}"]
 
     for doc_id in ranked_doc_ids:
         document = index.documents[doc_id]
